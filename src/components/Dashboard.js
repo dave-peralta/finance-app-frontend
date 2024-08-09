@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
-import { Container, Typography, Button, List, ListItem, ListItemText, TextField, Grid, Paper } from '@mui/material';
+import { Container, Typography, Button, TextField, Grid, Paper, MenuItem } from '@mui/material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,14 +8,12 @@ function Dashboard() {
     const navigate = useNavigate();
     const { user, logout } = useContext(AuthContext);
     const [expenses, setExpenses] = useState([]);
+    const [budgets, setBudgets] = useState([]);
     const [newExpense, setNewExpense] = useState({ description: '', amount: '', category: '' });
-    const [income, setIncome] = useState({ amount: '', description: '' });
-    const [financialData, setFinancialData] = useState({
-        totalExpenditure: 0,
-        totalIncome: 0,
-        remainingIncome: 0,
-        percentageExpended: 0
-    });
+    const [newBudget, setNewBudget] = useState({ amount: '', category: '' });
+    const [financialSummary, setFinancialSummary] = useState({});
+
+    const categories = ['Grocery', 'Entertainment', 'Subscription', 'Other'];
 
     const handleLogout = () => {
         logout();
@@ -24,28 +22,28 @@ function Dashboard() {
 
     useEffect(() => {
         fetchExpenses();
-        fetchIncome();
+        fetchBudgets();
     }, []);
 
     useEffect(() => {
-        updateFinancialData();
-    }, [expenses, income]);
+        updateFinancialSummary();
+    }, [expenses, budgets]);
 
     const fetchExpenses = async () => {
         try {
-            const response = await axios.get(`http://localhost:8080/api/expenses/user/${user.id}`);
+            const response = await axios.get(`http://localhost:8080/api/expenses/getAll`);
             setExpenses(response.data);
         } catch (error) {
             console.error('Error fetching expenses:', error);
         }
     };
 
-    const fetchIncome = async () => {
+    const fetchBudgets = async () => {
         try {
-            const response = await axios.get(`http://localhost:8080/api/income/user/${user.id}`);
-            setIncome(response.data);
+            const response = await axios.get(`http://localhost:8080/api/budgets/getAllBudgets`);
+            setBudgets(response.data);
         } catch (error) {
-            console.error('Error fetching income:', error);
+            console.error('Error fetching budgets:', error);
         }
     };
 
@@ -60,29 +58,42 @@ function Dashboard() {
         }
     };
 
-    const handleAddIncome = async (e) => {
+    const handleAddBudget = async (e) => {
         e.preventDefault();
         try {
-            await axios.post('http://localhost:8080/api/income', { ...income, userId: user.id });
-            setIncome({ amount: '', description: '' });
-            fetchIncome();
+            await axios.post('http://localhost:8080/api/budgets', { ...newBudget, userId: user.id });
+            setNewBudget({ amount: '', category: '' });
+            fetchBudgets();
         } catch (error) {
-            console.error('Error adding income:', error);
+            console.error('Error adding budget:', error);
         }
     };
 
-    const updateFinancialData = () => {
-        const totalExp = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
-        const totalInc = parseFloat(income.amount) || 0;
-        const remaining = totalInc - totalExp;
-        const percentage = totalInc > 0 ? (totalExp / totalInc) * 100 : 0;
+    const updateFinancialSummary = () => {
+        const summary = categories.reduce((acc, category) => {
+            const budgetAmount = budgets
+                .filter(b => b.category === category)
+                .reduce((sum, b) => sum + parseFloat(b.amount), 0);
+            const expenseAmount = expenses
+                .filter(e => e.category === category)
+                .reduce((sum, e) => sum + parseFloat(e.amount), 0);
+            acc[category] = {
+                budget: budgetAmount.toFixed(2),
+                expense: expenseAmount.toFixed(2),
+                remaining: (budgetAmount - expenseAmount).toFixed(2)
+            };
+            return acc;
+        }, {});
 
-        setFinancialData({
-            totalExpenditure: totalExp.toFixed(2),
-            totalIncome: totalInc.toFixed(2),
-            remainingIncome: remaining.toFixed(2),
-            percentageExpended: percentage.toFixed(2)
-        });
+        const totalBudget = Object.values(summary).reduce((sum, s) => sum + parseFloat(s.budget), 0);
+        const totalExpense = Object.values(summary).reduce((sum, s) => sum + parseFloat(s.expense), 0);
+        summary.total = {
+            budget: totalBudget.toFixed(2),
+            expense: totalExpense.toFixed(2),
+            remaining: (totalBudget - totalExpense).toFixed(2)
+        };
+
+        setFinancialSummary(summary);
     };
 
     return (
@@ -119,9 +130,18 @@ function Dashboard() {
                                 required
                                 margin="normal"
                             >
-                                <option value="jvalery">jvalery</option>
-                                {/* Add more options as needed */}
+                                {categories.map((category) => (
+                                    <MenuItem key={category} value={category}>{category}</MenuItem>
+                                ))}
                             </TextField>
+                            <TextField
+                                fullWidth
+                                label="Description"
+                                value={newExpense.description}
+                                onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                                required
+                                margin="normal"
+                            />
                             <Button type="submit" fullWidth variant="contained" color="primary">
                                 Add Expense
                             </Button>
@@ -134,26 +154,31 @@ function Dashboard() {
                         <Typography variant="h5" gutterBottom>
                             Add Budget
                         </Typography>
-                        <form onSubmit={handleAddIncome}>
+                        <form onSubmit={handleAddBudget}>
                             <TextField
                                 fullWidth
                                 label="Amount"
                                 type="number"
-                                value={income.amount}
-                                onChange={(e) => setIncome({ ...income, amount: e.target.value })}
+                                value={newBudget.amount}
+                                onChange={(e) => setNewBudget({ ...newBudget, amount: e.target.value })}
                                 required
                                 margin="normal"
                             />
                             <TextField
                                 fullWidth
-                                label="Description"
-                                value={income.description}
-                                onChange={(e) => setIncome({ ...income, description: e.target.value })}
+                                select
+                                label="Category"
+                                value={newBudget.category}
+                                onChange={(e) => setNewBudget({ ...newBudget, category: e.target.value })}
                                 required
                                 margin="normal"
-                            />
+                            >
+                                {categories.map((category) => (
+                                    <MenuItem key={category} value={category}>{category}</MenuItem>
+                                ))}
+                            </TextField>
                             <Button type="submit" fullWidth variant="contained" color="primary">
-                                Add Income
+                                Add Budget
                             </Button>
                         </form>
                     </Paper>
@@ -164,9 +189,14 @@ function Dashboard() {
                         <Typography variant="h5" gutterBottom>
                             Financial Summary
                         </Typography>
-                        <Typography>Total Expenditure: ${financialData.totalExpenditure}</Typography>
-                        <Typography>Remaining Income: ${financialData.remainingIncome}</Typography>
-                        <Typography>Percentage Expended: {financialData.percentageExpended}%</Typography>
+                        {Object.entries(financialSummary).map(([category, data]) => (
+                            <div key={category}>
+                                <Typography variant="h6">{category}</Typography>
+                                <Typography>Budget: ${data.budget}</Typography>
+                                <Typography>Expenses: ${data.expense}</Typography>
+                                <Typography>Remaining: ${data.remaining}</Typography>
+                            </div>
+                        ))}
                     </Paper>
                 </Grid>
             </Grid>
